@@ -1,0 +1,75 @@
+let initialized = false
+let attempts = 0
+
+function checksum(data: number[]): number {
+    let cs = 0xFF
+    for (let i = 0; i < data.length; i++) {
+        cs ^= data[i]
+    }
+    return cs
+}
+
+function sendLPF2(cmd: number[]) {
+    let buf = pins.createBuffer(cmd.length + 1)
+    for (let i = 0; i < cmd.length; i++) {
+        buf.setUint8(i, cmd[i])
+    }
+    buf.setUint8(cmd.length, checksum(cmd))
+    serial.writeBuffer(buf)
+}
+
+// === Wake pulse ===
+// LPF2 expects a short LOW pulse on RX to wake UART mode
+function wakeSensor() {
+    pins.digitalWritePin(DigitalPin.P1, 0)
+    basic.pause(50)
+    pins.digitalWritePin(DigitalPin.P1, 1)
+    basic.pause(50)
+}
+
+// === Send initialization sequence at 9600 ===
+function initLPF2_9600() {
+    serial.redirect(SerialPin.P1, SerialPin.P2, BaudRate.BaudRate9600)
+    sendLPF2([0x41, 0x00]) // select distance mode
+    basic.pause(100)
+}
+
+// === Switch to high-speed 115200 ===
+function switchBaud115200() {
+    serial.redirect(SerialPin.P1, SerialPin.P2, BaudRate.BaudRate115200)
+    basic.pause(100)
+}
+
+// === Attempt handshake loop ===
+basic.forever(function () {
+    if (!initialized) {
+        attempts += 1
+        basic.showNumber(attempts)
+
+        // 1. Wake sensor
+        wakeSensor()
+
+        // 2. Init at 9600
+        initLPF2_9600()
+
+        // 3. Switch to 115200
+        switchBaud115200()
+
+        // 4. Try to read packet
+        let buf = serial.readBuffer(4)
+        if (buf.length >= 3 && buf.getUint8(0) == 0xC0) {
+            initialized = true
+            basic.showString("G") // handshake success
+        }
+
+        basic.pause(300) // retry delay if needed
+
+    } else {
+        // Read distance packets
+        let buf = serial.readBuffer(4)
+        if (buf.length >= 3 && buf.getUint8(0) == 0xC0) {
+            let distance = buf.getUint8(1)
+            basic.showNumber(distance)
+        }
+    }
+})
