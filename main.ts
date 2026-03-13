@@ -59,7 +59,7 @@ basic.forever(function () {
         // 2. Init at 2400
         initLPF2_2400()
 
-        // 3. Try to read response at 9600
+        // 3. Try to read response at 2400
         let buf = serial.readBuffer(4)
         if (buf.length >= 3 && buf.getUint8(0) == 0x41) {
             initialized = true
@@ -76,6 +76,8 @@ basic.forever(function () {
         if (buf.length >= 3 && buf.getUint8(0) == 0xC0) {
             let distance = buf.getUint8(1)
             basic.showNumber(distance)
+            // Send to computer via serial
+            serial.writeLine("Distance: " + distance.toString())
         }
 
         // Send keep-alive every 2 seconds
