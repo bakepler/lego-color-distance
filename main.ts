@@ -1,5 +1,6 @@
 let initialized = false
 let attempts = 0
+let lastKeepAlive = 0
 
 function checksum(data: number[]): number {
     let cs = 0xFF
@@ -27,10 +28,10 @@ function wakeSensor() {
     basic.pause(50)
 }
 
-// === Send initialization sequence at 9600 ===
-function initLPF2_9600() {
-    serial.redirect(SerialPin.P1, SerialPin.P2, BaudRate.BaudRate9600)
-    sendLPF2([0x41, 0x00]) // select distance mode
+// === Send initialization sequence at 2400 ===
+function initLPF2_2400() {
+    serial.redirect(SerialPin.P1, SerialPin.P2, BaudRate.BaudRate2400)
+    sendLPF2([0x41, 0x01]) // select distance mode
     basic.pause(100)
 }
 
@@ -39,6 +40,12 @@ function switchBaud115200() {
     serial.redirect(SerialPin.P1, SerialPin.P2, BaudRate.BaudRate115200)
     basic.pause(100)
 }
+
+// Button A to reset initialization
+input.onButtonPressed(Button.A, function () {
+    initialized = false
+    attempts = 0
+})
 
 // === Attempt handshake loop ===
 basic.forever(function () {
@@ -49,27 +56,32 @@ basic.forever(function () {
         // 1. Wake sensor
         wakeSensor()
 
-        // 2. Init at 9600
-        initLPF2_9600()
+        // 2. Init at 2400
+        initLPF2_2400()
 
-        // 3. Switch to 115200
-        switchBaud115200()
-
-        // 4. Try to read packet
+        // 3. Try to read response at 9600
         let buf = serial.readBuffer(4)
-        if (buf.length >= 3 && buf.getUint8(0) == 0xC0) {
+        if (buf.length >= 3 && buf.getUint8(0) == 0x41) {
             initialized = true
             basic.showString("G") // handshake success
+            // 4. Switch to 115200 for data
+            switchBaud115200()
         }
 
         basic.pause(300) // retry delay if needed
 
     } else {
-        // Read distance packets
+        // Read distance packets at 115200
         let buf = serial.readBuffer(4)
         if (buf.length >= 3 && buf.getUint8(0) == 0xC0) {
             let distance = buf.getUint8(1)
             basic.showNumber(distance)
+        }
+
+        // Send keep-alive every 2 seconds
+        if (control.millis() - lastKeepAlive > 2000) {
+            sendLPF2([0x21, 0x00]) // PORT_MODE_INFORMATION_REQUEST
+            lastKeepAlive = control.millis()
         }
     }
 })
